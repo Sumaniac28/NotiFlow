@@ -15,12 +15,9 @@ import java.util.Properties;
 @Service
 public class EmailServices {
 
-    @Autowired
-    private JavaMailSender mailSender;
-
     private JavaMailSender createJavaMailSender(String fromEmail, String password) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-        mailSender.setHost("smtp.example.com"); // Update with the correct SMTP host
+        mailSender.setHost("smtp.gmail.com"); // Update with the correct SMTP host
         mailSender.setPort(587); // Update with the correct SMTP port
 
         mailSender.setUsername(fromEmail);
@@ -35,7 +32,8 @@ public class EmailServices {
         return mailSender;
     }
 
-    public void sendEmail(String toEmail, String subject, String message) {
+    public void sendEmail(String fromEmail, String password ,String toEmail, String subject, String message) {
+        JavaMailSender mailSender = createJavaMailSender(fromEmail, password);
         SimpleMailMessage email = new SimpleMailMessage();
         email.setTo(toEmail);
         email.setSubject(subject);
@@ -43,7 +41,8 @@ public class EmailServices {
         mailSender.send(email);
     }
 
-    public void sendTemplateEmail(String toEmail, String subject, String message, String coverImageURL, String companyLogoURL) throws MessagingException {
+    public void sendTemplateEmail( String fromEmail, String password ,String toEmail, String subject, String message, String coverImageURL, String companyLogoURL) throws MessagingException {
+        JavaMailSender mailSender = createJavaMailSender(fromEmail, password);
         MimeMessage mimeMessage = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
 

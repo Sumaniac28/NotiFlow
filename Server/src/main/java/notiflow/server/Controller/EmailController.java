@@ -16,7 +16,7 @@ public class EmailController {
 
     @PostMapping("/send")
     public String sendEmail(@RequestBody EmailRequest emailRequest) {
-        emailService.sendEmail(emailRequest.getToEmail(), emailRequest.getSubject(), emailRequest.getMessage());
+        emailService.sendEmail(emailRequest.getFromEmail(), emailRequest.getPassword() ,emailRequest.getToEmail(), emailRequest.getSubject(), emailRequest.getMessage());
         return "Email sent successfully!";
     }
 
@@ -24,6 +24,8 @@ public class EmailController {
     public String sendTemplateEmail(@RequestBody EmailRequest emailRequest) {
         try {
             emailService.sendTemplateEmail(
+                    emailRequest.getFromEmail(),
+                    emailRequest.getPassword(),
                     emailRequest.getToEmail(),
                     emailRequest.getSubject(),
                     emailRequest.getMessage(),
