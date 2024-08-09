@@ -1,0 +1,29 @@
+.home{
+    width:100vw;
+    display:flex;
+    justify-content: center;
+    align-items: center;
+    gap: 7vw;
+    height: 100vh;
+    padding: 0 18vw;
+    height: 100vh;
+    position: relative;
+    .text{
+        width:60vw;
+        text-align: start;
+        h1{
+            font-size: 7vh;
+            margin:10px 0px;
+        }
+        p{
+            font-size: 2.7vh;
+            color: rgb(84, 84, 84);
+        }
+    }
+    .heroImage{
+        .pfp{
+            width: 300px;
+            transform: rotate(270deg);
+        }
+    }
+}
