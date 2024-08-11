@@ -1,15 +1,19 @@
 package notiflow.server.Entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import org.hibernate.validator.constraints.URL;
+
+import java.time.LocalDate;
 
 @Entity
 public class EmailEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @JsonIgnore
     private int id;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -18,6 +22,12 @@ public class EmailEntity {
 
     @Email
     private String email;
+
+    @Email
+    private String ccEmail;
+
+    @Email
+    private String bccEmail;
 
     private String subject;
 
@@ -33,6 +43,8 @@ public class EmailEntity {
     final static private String type = "email";
 
     private boolean isSent;
+
+    private LocalDate date;
 
     public int getId() {
         return id;
@@ -90,23 +102,39 @@ public class EmailEntity {
         isSent = sent;
     }
 
+    public LocalDate getDate() {
+        return date;
+    }
+
+    public void setDate(LocalDate date) {
+        this.date = date;
+    }
+
     public EmailEntity() {
     }
 
-    public EmailEntity(String email, String subject, String message) {
+    public EmailEntity(String email, String ccEmail, String bccEmail, String subject, String message, UserEntity user) {
         this.email = email;
+        this.ccEmail = ccEmail;
+        this.bccEmail = bccEmail;
         this.subject = subject;
         this.message = message;
+        this.user = user;
         this.isSent = false;
+        this.date = LocalDate.now();
     }
 
-    public EmailEntity(String email, String subject, String message, @URL String coverImageURL, @URL String companyLogoURL) {
+    public EmailEntity(String email, String ccEmail, String bccEmail, String subject, String message, @URL String coverImageURL, @URL String companyLogoURL, UserEntity user) {
         this.email = email;
+        this.ccEmail = ccEmail;
+        this.bccEmail = bccEmail;
         this.subject = subject;
         this.message = message;
         this.coverImageURL = coverImageURL;
         this.companyLogoURL = companyLogoURL;
+        this.user = user;
         this.isSent = false;
+        this.date = LocalDate.now();
     }
 
 }

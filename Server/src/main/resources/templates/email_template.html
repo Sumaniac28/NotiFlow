@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; }
+        .email-container { max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #ffffff; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .cover-image { width: 100%; height: auto; border-radius: 8px; }
+        .content { margin: 20px 0; }
+        .content p { margin: 0; padding: 0; }
+        .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #e0e0e0; padding-top: 10px; }
+        .footer img { max-width: 150px; margin-top: 10px; }
+        .footer p { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+<div class="email-container">
+    <div class="header">
+        <img th:src="${coverImageURL}" alt="Cover Image" class="cover-image" />
+    </div>
+    <div class="content">
+        <p th:text="${message}"></p>
+    </div>
+    <div class="footer">
+        <p>&copy; <span th:text="${year}"></span>  <span th:text="${companyName}"></span>. All rights reserved.</p>
+        <img th:src="${companyLogoURL}" alt="Company Logo" />
+    </div>
+</div>
+</body>
+</html>

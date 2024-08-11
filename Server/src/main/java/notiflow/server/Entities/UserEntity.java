@@ -7,12 +7,12 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-
 @Entity
 public class UserEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @JsonIgnore
     private int id;
 
     private String name;
@@ -21,12 +21,13 @@ public class UserEntity {
     private String email;
 
     @Size(min = 10, message = "Phone number should have at least 10 characters")
-    private int phone;
+    private String phone;
 
     @Size(min = 8, message = "Password should have at least 8 characters")
+    @JsonIgnore
     private String password;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true )
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EmailEntity> emails;
 
     public int getId() {
@@ -37,28 +38,27 @@ public class UserEntity {
         this.id = id;
     }
 
-    public @Size(min = 8, message = "Password should have at least 8 characters") String getPassword() {
+    public String getPassword() {
         return password;
     }
 
-    public void setPassword(@Size(min = 8, message = "Password should have at least 8 characters") String password) {
+    public void setPassword(String password) {
         this.password = password;
     }
 
-    @Size(min = 10, message = "Phone number should have at least 10 characters")
-    public int getPhone() {
+    public String getPhone() {
         return phone;
     }
 
-    public void setPhone(@Size(min = 10, message = "Phone number should have at least 10 characters") int phone) {
+    public void setPhone(String phone) {
         this.phone = phone;
     }
 
-    public @Email String getEmail() {
+    public String getEmail() {
         return email;
     }
 
-    public void setEmail(@Email String email) {
+    public void setEmail(String email) {
         this.email = email;
     }
 
@@ -70,14 +70,21 @@ public class UserEntity {
         this.name = name;
     }
 
+    public List<EmailEntity> getEmails() {
+        return emails;
+    }
+
+    public void setEmails(EmailEntity email) {
+        this.emails.add(email);
+    }
+
     public UserEntity() {
     }
 
-    public UserEntity(String name, String email, int phone, String password) {
+    public UserEntity(String name, String email, String phone, String password) {
         this.name = name;
         this.email = email;
         this.phone = phone;
         this.password = password;
     }
-
 }
