@@ -74,8 +74,8 @@ public class UserEntity {
         return emails;
     }
 
-    public void setEmails(EmailEntity email) {
-        this.emails.add(email);
+    public void setEmails(List<EmailEntity> emails) {
+        this.emails = emails;
     }
 
     public UserEntity() {

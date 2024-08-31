@@ -3,10 +3,15 @@ package notiflow.server.Services;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import notiflow.server.Entities.EmailEntity;
+import notiflow.server.Entities.RecipientEntity;
+import notiflow.server.Entities.TemplateEntity;
 import notiflow.server.Entities.UserEntity;
 import notiflow.server.Repository.EmailRepository;
+import notiflow.server.Repository.TemplateRepository;
 import notiflow.server.Repository.UserRepository;
 import notiflow.server.Requests.EmailRequest;
+import notiflow.server.Requests.RecipientRequest;
+import notiflow.server.Requests.TemplateRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,8 +23,12 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class EmailServices {
@@ -28,13 +37,15 @@ public class EmailServices {
 
     private final EmailRepository emailRepository;
     private final UserRepository userRepository;
+    private final TemplateRepository templateRepository;
     private final JavaMailSender mailSender;
     private final SpringTemplateEngine templateEngine;
 
     @Autowired
-    public EmailServices(EmailRepository emailRepository, UserRepository userRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine) {
+    public EmailServices(EmailRepository emailRepository, UserRepository userRepository, TemplateRepository templateRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine) {
         this.emailRepository = emailRepository;
         this.userRepository = userRepository;
+        this.templateRepository = templateRepository;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
     }
@@ -58,15 +69,24 @@ public class EmailServices {
 
     private UserEntity getUser(String fromEmail) {
         UserEntity user = userRepository.findByEmail(fromEmail);
-
         if (user == null) {
             throw new IllegalArgumentException("User not found");
         }
-
         return user;
     }
 
-    private EmailEntity prepareEmailEntity(EmailRequest emailRequest, UserEntity user, String recipient) {
+    private TemplateEntity saveTemplateEntity(TemplateRequest templateRequest) {
+        if (templateRequest == null) {
+            return null;
+        }
+        TemplateEntity templateEntity = new TemplateEntity();
+        templateEntity.setCoverImageUrl(templateRequest.getCoverImageUrl());
+        templateEntity.setCompanyLogoUrl(templateRequest.getCompanyLogoUrl());
+
+        return templateRepository.save(templateEntity);
+    }
+
+    private EmailEntity prepareEmailEntity(EmailRequest emailRequest, UserEntity user, TemplateEntity templateEntity) {
         if (emailRequest.getSubject() == null || emailRequest.getSubject().isEmpty()) {
             throw new IllegalArgumentException("Subject cannot be null or empty");
         }
@@ -74,42 +94,58 @@ public class EmailServices {
             throw new IllegalArgumentException("Message cannot be null or empty");
         }
 
-        if (emailRequest.getCcEmail() == null) {
-            emailRequest.setCcEmail("");
-        }
+        EmailEntity emailEntity = new EmailEntity();
+        emailEntity.setSubject(emailRequest.getSubject());
+        emailEntity.setMessage(emailRequest.getMessage());
+        emailEntity.setTemplateEntity(templateEntity);
+        emailEntity.setUser(user);
+        emailEntity.setSent(false);
 
-        if (emailRequest.getBccEmail() == null) {
-            emailRequest.setBccEmail("");
-        }
+        Set<RecipientEntity> recipientEntities = emailRequest.getRecipients().stream()
+                .map(r -> {
+                    RecipientEntity recipientEntity = new RecipientEntity();
+                    recipientEntity.setEmail(r.getEmail());
+                    recipientEntity.setType(r.getType());
+                    recipientEntity.setEmailEntity(emailEntity);
+                    return recipientEntity;
+                })
+                .collect(Collectors.toSet());
 
-        return new EmailEntity(
-                recipient,
-                emailRequest.getCcEmail(),
-                emailRequest.getBccEmail(),
-                emailRequest.getSubject(),
-                emailRequest.getMessage(),
-                emailRequest.getCoverImageURL(),
-                emailRequest.getCompanyLogoURL(),
-                user
-        );
+        emailEntity.setRecipients(recipientEntities);
+
+        return emailEntity;
     }
 
-
+    @Transactional
     public void sendEmail(EmailRequest emailRequest) throws MessagingException {
         UserEntity user = getUser(emailRequest.getFromEmail());
         JavaMailSender mailSender = createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
 
-        sendSimpleEmail(emailRequest, user, mailSender, emailRequest.getToEmail().toArray(new String[0]));
+        sendSimpleEmail(emailRequest, user, mailSender);
     }
 
+    @Transactional
     public void sendTemplateEmail(EmailRequest emailRequest) throws MessagingException {
         UserEntity user = getUser(emailRequest.getFromEmail());
         JavaMailSender mailSender = createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
 
-        sendEmailWithTemplate(emailRequest, user, mailSender, emailRequest.getToEmail().toArray(new String[0]));
+        TemplateEntity templateEntity = saveTemplateEntity(emailRequest.getTemplateImages());
+
+        EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, templateEntity);
+
+        templateEntity.setEmailEntity(emailEntity);
+
+        sendEmailWithTemplate(emailRequest, user, mailSender, emailEntity);
     }
 
-    private void sendSimpleEmail(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, String[] recipients) throws MessagingException {
+    private void sendSimpleEmail(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender) throws MessagingException {
+        EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, null);
+
+        List<String> recipients = emailRequest.getRecipients().stream()
+                .filter(r -> "TO".equals(r.getType().toString()))
+                .map(RecipientRequest::getEmail)
+                .collect(Collectors.toList());
+
         for (String recipient : recipients) {
             if (recipient == null || recipient.isEmpty()) {
                 logger.warn("Skipping empty recipient");
@@ -121,15 +157,21 @@ public class EmailServices {
             email.setSubject(emailRequest.getSubject());
             email.setText(emailRequest.getMessage());
 
-            if (!emailRequest.getCcEmail().isEmpty()) {
-                email.setCc(emailRequest.getCcEmail());
+            List<String> ccRecipients = emailRequest.getRecipients().stream()
+                    .filter(r -> "CC".equals(r.getType().toString()))
+                    .map(RecipientRequest::getEmail)
+                    .collect(Collectors.toList());
+            if (!ccRecipients.isEmpty()) {
+                email.setCc(ccRecipients.toArray(new String[0]));
             }
 
-            if (!emailRequest.getBccEmail().isEmpty()) {
-                email.setBcc(emailRequest.getBccEmail());
+            List<String> bccRecipients = emailRequest.getRecipients().stream()
+                    .filter(r -> "BCC".equals(r.getType().toString()))
+                    .map(RecipientRequest::getEmail)
+                    .collect(Collectors.toList());
+            if (!bccRecipients.isEmpty()) {
+                email.setBcc(bccRecipients.toArray(new String[0]));
             }
-
-            EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, recipient);
 
             try {
                 logger.info("Sending simple email to: {}", recipient);
@@ -142,21 +184,24 @@ public class EmailServices {
                 throw new MessagingException("Failed to send simple email to " + recipient + ": " + e.getMessage());
             } finally {
                 emailRepository.save(emailEntity);
-                user.setEmails(emailEntity);
             }
         }
-        userRepository.save(user);
     }
 
-    private void sendEmailWithTemplate(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, String[] recipients) throws MessagingException {
+    private void sendEmailWithTemplate(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, EmailEntity emailEntity) throws MessagingException {
         Context context = new Context();
-        context.setVariable("coverImageURL", emailRequest.getCoverImageURL());
+        context.setVariable("coverImageURL", emailRequest.getTemplateImages() != null ? emailRequest.getTemplateImages().getCoverImageUrl() : null);
         context.setVariable("message", emailRequest.getMessage());
         context.setVariable("year", java.time.Year.now().getValue());
-        context.setVariable("companyLogoURL", emailRequest.getCompanyLogoURL());
+        context.setVariable("companyLogoURL", emailRequest.getTemplateImages() != null ? emailRequest.getTemplateImages().getCompanyLogoUrl() : null);
         context.setVariable("companyName", user.getName());
 
         String htmlContent = templateEngine.process("email_template", context);
+
+        List<String> recipients = emailRequest.getRecipients().stream()
+                .filter(r -> "TO".equals(r.getType().toString()))
+                .map(RecipientRequest::getEmail)
+                .collect(Collectors.toList());
 
         for (String recipient : recipients) {
             if (recipient == null || recipient.isEmpty()) {
@@ -171,15 +216,21 @@ public class EmailServices {
             helper.setSubject(emailRequest.getSubject());
             helper.setText(htmlContent, true);
 
-            if ( emailRequest.getCcEmail()!=null && !emailRequest.getCcEmail().isEmpty()) {
-                helper.setCc(emailRequest.getCcEmail());
+            List<String> ccRecipients = emailRequest.getRecipients().stream()
+                    .filter(r -> "CC".equals(r.getType().toString()))
+                    .map(RecipientRequest::getEmail)
+                    .collect(Collectors.toList());
+            if (!ccRecipients.isEmpty()) {
+                helper.setCc(ccRecipients.toArray(new String[0]));
             }
 
-            if (  emailRequest.getBccEmail()!=null && !emailRequest.getBccEmail().isEmpty()) {
-                helper.setBcc(emailRequest.getBccEmail());
+            List<String> bccRecipients = emailRequest.getRecipients().stream()
+                    .filter(r -> "BCC".equals(r.getType().toString()))
+                    .map(RecipientRequest::getEmail)
+                    .collect(Collectors.toList());
+            if (!bccRecipients.isEmpty()) {
+                helper.setBcc(bccRecipients.toArray(new String[0]));
             }
-
-            EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, recipient);
 
             try {
                 logger.info("Sending template email to: {}", recipient);
@@ -192,11 +243,7 @@ public class EmailServices {
                 throw new MessagingException("Failed to send template email to " + recipient + ": " + e.getMessage());
             } finally {
                 emailRepository.save(emailEntity);
-                user.setEmails(emailEntity);
             }
         }
-        userRepository.save(user);
     }
-
-
 }

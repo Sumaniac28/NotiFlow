@@ -1,65 +1,50 @@
 package notiflow.server.Entities;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.Size;
-import org.hibernate.validator.constraints.URL;
-
-import java.time.LocalDate;
+import java.util.Set;
 
 @Entity
 public class EmailEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @JsonIgnore
-    private int id;
+    private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @JoinColumn(name = "user_id", nullable = false)
     private UserEntity user;
 
-    @Email
-    private String email;
-
-    @Email
-    private String ccEmail;
-
-    @Email
-    private String bccEmail;
-
+    @Column(name = "subject", nullable = false)
     private String subject;
 
-    @Size(min = 10, message = "Message should have at least 10 characters")
+    @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 
-    @URL
-    private String coverImageURL;
+    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @JoinColumn(name = "template_id")
+    private TemplateEntity templateEntity;
 
-    @URL
-    private String companyLogoURL;
-
-    final static private String type = "email";
-
+    @Column(name = "is_sent", nullable = false)
     private boolean isSent;
 
-    private LocalDate date;
+    @OneToMany(mappedBy = "emailEntity", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<RecipientEntity> recipients;
 
-    public int getId() {
+    // Getters and setters
+    public Long getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
-    public @Email String getEmail() {
-        return email;
+    public UserEntity getUser() {
+        return user;
     }
 
-    public void setEmail(@Email String email) {
-        this.email = email;
+    public void setUser(UserEntity user) {
+        this.user = user;
     }
 
     public String getSubject() {
@@ -70,28 +55,20 @@ public class EmailEntity {
         this.subject = subject;
     }
 
-    public @Size(min = 10, message = "Message should have at least 10 characters") String getMessage() {
+    public String getMessage() {
         return message;
     }
 
-    public void setMessage(@Size(min = 10, message = "Message should have at least 10 characters") String message) {
+    public void setMessage(String message) {
         this.message = message;
     }
 
-    public @URL String getCoverImageURL() {
-        return coverImageURL;
+    public TemplateEntity getTemplateEntity() {
+        return templateEntity;
     }
 
-    public void setCoverImageURL(@URL String coverImageURL) {
-        this.coverImageURL = coverImageURL;
-    }
-
-    public @URL String getCompanyLogoURL() {
-        return companyLogoURL;
-    }
-
-    public void setCompanyLogoURL(@URL String companyLogoURL) {
-        this.companyLogoURL = companyLogoURL;
+    public void setTemplateEntity(TemplateEntity templateEntity) {
+        this.templateEntity = templateEntity;
     }
 
     public boolean isSent() {
@@ -102,39 +79,11 @@ public class EmailEntity {
         isSent = sent;
     }
 
-    public LocalDate getDate() {
-        return date;
+    public Set<RecipientEntity> getRecipients() {
+        return recipients;
     }
 
-    public void setDate(LocalDate date) {
-        this.date = date;
+    public void setRecipients(Set<RecipientEntity> recipients) {
+        this.recipients = recipients;
     }
-
-    public EmailEntity() {
-    }
-
-    public EmailEntity(String email, String ccEmail, String bccEmail, String subject, String message, UserEntity user) {
-        this.email = email;
-        this.ccEmail = ccEmail;
-        this.bccEmail = bccEmail;
-        this.subject = subject;
-        this.message = message;
-        this.user = user;
-        this.isSent = false;
-        this.date = LocalDate.now();
-    }
-
-    public EmailEntity(String email, String ccEmail, String bccEmail, String subject, String message, @URL String coverImageURL, @URL String companyLogoURL, UserEntity user) {
-        this.email = email;
-        this.ccEmail = ccEmail;
-        this.bccEmail = bccEmail;
-        this.subject = subject;
-        this.message = message;
-        this.coverImageURL = coverImageURL;
-        this.companyLogoURL = companyLogoURL;
-        this.user = user;
-        this.isSent = false;
-        this.date = LocalDate.now();
-    }
-
 }

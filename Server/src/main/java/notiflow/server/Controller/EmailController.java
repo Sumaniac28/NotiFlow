@@ -21,21 +21,22 @@ public class EmailController {
 
     @PostMapping("/send")
     public ResponseEntity<String> sendEmail(@Valid @RequestBody EmailRequest emailRequest) {
-        try {
+        try{
             emailService.sendEmail(emailRequest);
             return ResponseEntity.ok("Email sent successfully!");
         } catch (MessagingException e) {
-            return ResponseEntity.badRequest().body("Failed to send email: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error sending email: " + e.getMessage());
         }
     }
 
     @PostMapping("/sendTemplate")
     public ResponseEntity<String> sendTemplateEmail(@Valid @RequestBody EmailRequest emailRequest) {
-        try {
-            emailService.sendTemplateEmail(emailRequest);
-            return ResponseEntity.ok("Template email sent successfully!");
-        } catch (MessagingException e) {
-            return ResponseEntity.badRequest().body("Failed to send template email: " + e.getMessage());
-        }
+            try {
+                emailService.sendTemplateEmail(emailRequest);
+                return ResponseEntity.ok("Email sent successfully!");
+            } catch (MessagingException e) {
+                return ResponseEntity.badRequest().body("Error sending email: " + e.getMessage());
+            }
+
     }
 }
