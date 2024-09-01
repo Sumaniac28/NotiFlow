@@ -1,6 +1,8 @@
 package notiflow.server.Entities;
 
 import jakarta.persistence.*;
+
+import java.time.LocalDateTime;
 import java.util.Set;
 
 @Entity
@@ -23,6 +25,9 @@ public class EmailEntity {
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JoinColumn(name = "template_id")
     private TemplateEntity templateEntity;
+
+    @Column(nullable = true)
+    private LocalDateTime scheduleFutureMail;
 
     @Column(name = "is_sent", nullable = false)
     private boolean isSent;
@@ -69,6 +74,14 @@ public class EmailEntity {
 
     public void setTemplateEntity(TemplateEntity templateEntity) {
         this.templateEntity = templateEntity;
+    }
+
+    public LocalDateTime getScheduleFutureMail() {
+        return scheduleFutureMail;
+    }
+
+    public void setScheduleFutureMail(LocalDateTime scheduleFutureMail) {
+        this.scheduleFutureMail = scheduleFutureMail;
     }
 
     public boolean isSent() {

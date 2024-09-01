@@ -1,8 +1,17 @@
 package notiflow.server.Requests;
 
-public class TemplateRequest {
+import org.hibernate.validator.constraints.URL;
 
+import java.io.Serializable;
+
+public class TemplateRequest implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @URL(message = "Cover Image URL should be valid")
     private String coverImageUrl;
+
+    @URL(message = "Company Logo URL should be valid")
     private String companyLogoUrl;
 
     // Getters and setters

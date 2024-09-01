@@ -1,15 +1,35 @@
 package notiflow.server.Requests;
 
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+
+import java.io.Serializable;
+import java.time.LocalDateTime;
 import java.util.List;
 
-public class EmailRequest {
+public class EmailRequest implements Serializable {
 
+    private static final long serialVersionUID = 1L;
+
+    @Email(message = "Invalid email address")
+    @NotBlank(message = "Email address is required")
     private String fromEmail;
+
+    @NotBlank(message = "Password is required")
     private String password;
+
+    @NotBlank(message = "Subject is required")
     private String subject;
+
+    @NotBlank(message = "Message is required")
     private String message;
+
+    @NotEmpty(message = "Recipients are required")
     private List<RecipientRequest> recipients;
+
     private TemplateRequest templateImages;
+    private LocalDateTime scheduleFutureMail;
 
     // Getters and setters
     public String getFromEmail() {
@@ -58,5 +78,13 @@ public class EmailRequest {
 
     public void setTemplateImages(TemplateRequest templateRequest) {
         this.templateImages = templateRequest;
+    }
+
+    public LocalDateTime getScheduleFutureMail() {
+        return scheduleFutureMail;
+    }
+
+    public void setScheduleFutureMail(LocalDateTime scheduleFutureMail) {
+        this.scheduleFutureMail = scheduleFutureMail;
     }
 }

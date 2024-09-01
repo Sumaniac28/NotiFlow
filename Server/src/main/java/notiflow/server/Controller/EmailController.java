@@ -19,7 +19,7 @@ public class EmailController {
         this.emailService = emailService;
     }
 
-    @PostMapping("/send")
+    @PostMapping("/sendMail")
     public ResponseEntity<String> sendEmail(@Valid @RequestBody EmailRequest emailRequest) {
         try{
             emailService.sendEmail(emailRequest);
@@ -29,7 +29,7 @@ public class EmailController {
         }
     }
 
-    @PostMapping("/sendTemplate")
+    @PostMapping("/sendTemplateMail")
     public ResponseEntity<String> sendTemplateEmail(@Valid @RequestBody EmailRequest emailRequest) {
             try {
                 emailService.sendTemplateEmail(emailRequest);
@@ -38,5 +38,25 @@ public class EmailController {
                 return ResponseEntity.badRequest().body("Error sending email: " + e.getMessage());
             }
 
+    }
+
+    @PostMapping("/schedule/sendMail")
+    public ResponseEntity<String> scheduleEmail(@Valid @RequestBody EmailRequest emailRequest) {
+        try {
+            emailService.sendScheduledSimpleEmail(emailRequest);
+            return ResponseEntity.ok("Email scheduled successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error scheduling email: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/schedule/sendTemplateMail")
+    public ResponseEntity<String> scheduleTemplateEmail(@Valid @RequestBody EmailRequest emailRequest) {
+        try {
+            emailService.sendScheduledTemplateEmail(emailRequest);
+            return ResponseEntity.ok("Email scheduled successfully!");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error scheduling email: " + e.getMessage());
+        }
     }
 }

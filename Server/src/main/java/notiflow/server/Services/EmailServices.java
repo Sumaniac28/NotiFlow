@@ -1,17 +1,22 @@
 package notiflow.server.Services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import notiflow.server.Entities.EmailEntity;
 import notiflow.server.Entities.RecipientEntity;
 import notiflow.server.Entities.TemplateEntity;
 import notiflow.server.Entities.UserEntity;
+import notiflow.server.Jobs.SimpleEmailJob;
+import notiflow.server.Jobs.TemplateEmailJob;
 import notiflow.server.Repository.EmailRepository;
 import notiflow.server.Repository.TemplateRepository;
 import notiflow.server.Repository.UserRepository;
 import notiflow.server.Requests.EmailRequest;
 import notiflow.server.Requests.RecipientRequest;
 import notiflow.server.Requests.TemplateRequest;
+import org.quartz.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,9 +30,12 @@ import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,14 +48,18 @@ public class EmailServices {
     private final TemplateRepository templateRepository;
     private final JavaMailSender mailSender;
     private final SpringTemplateEngine templateEngine;
+    private final Scheduler scheduler;
+    private ObjectMapper objectMapper;
 
     @Autowired
-    public EmailServices(EmailRepository emailRepository, UserRepository userRepository, TemplateRepository templateRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine) {
+    public EmailServices(EmailRepository emailRepository, UserRepository userRepository, TemplateRepository templateRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine, @Qualifier("scheduler") Scheduler scheduler, ObjectMapper objectMapper) {
         this.emailRepository = emailRepository;
         this.userRepository = userRepository;
         this.templateRepository = templateRepository;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
+        this.scheduler = scheduler;
+        this.objectMapper = objectMapper;
     }
 
     private JavaMailSender createJavaMailSender(String fromEmail, String password) {
@@ -114,6 +126,66 @@ public class EmailServices {
         emailEntity.setRecipients(recipientEntities);
 
         return emailEntity;
+    }
+
+    private void validateScheduledDate(LocalDateTime scheduledDateTime) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime maxAllowedDate = now.plusDays(5);
+
+        if (scheduledDateTime.isAfter(maxAllowedDate)) {
+            throw new IllegalArgumentException("Scheduled date cannot be more than 5 days ahead");
+        }
+    }
+
+    private String convertEmailRequestToJson(EmailRequest emailRequest) {
+        try {
+            return objectMapper.writeValueAsString(emailRequest);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to convert EmailRequest to JSON", e);
+        }
+    }
+
+    private void scheduleEmailJob(EmailRequest emailRequest, Class<? extends Job> jobClass, LocalDateTime scheduleFutureMail) {
+
+        JobDetail jobDetail = JobBuilder.newJob(jobClass)
+                .withIdentity(UUID.randomUUID().toString(), "email-jobs")
+                .usingJobData("emailRequestJson", convertEmailRequestToJson(emailRequest))
+                .build();
+
+        Trigger trigger = TriggerBuilder.newTrigger()
+                .withIdentity(UUID.randomUUID().toString(), "email-triggers")
+                .startAt(java.util.Date.from(scheduleFutureMail.atZone(ZoneId.systemDefault()).toInstant()))
+                .build();
+
+        try {
+            scheduler.scheduleJob(jobDetail, trigger);
+        } catch (SchedulerException e) {
+            throw new RuntimeException("Failed to schedule email", e);
+        }
+    }
+
+    public void sendScheduledSimpleEmail(EmailRequest emailRequest) throws MessagingException{
+        if(emailRequest.getScheduleFutureMail() == null){
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
+        }else if(emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())){
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
+        }
+        else{
+            validateScheduledDate(emailRequest.getScheduleFutureMail());
+            scheduleEmailJob(emailRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
+        }
+    }
+
+    public void sendScheduledTemplateEmail(EmailRequest emailRequest) throws MessagingException{
+        if(emailRequest.getScheduleFutureMail() == null){
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
+        }else if(emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())){
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
+        }
+        else{
+            validateScheduledDate(emailRequest.getScheduleFutureMail());
+            scheduleEmailJob(emailRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
+        }
     }
 
     @Transactional
