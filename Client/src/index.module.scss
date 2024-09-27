@@ -8,7 +8,6 @@ $lightFont: #111111 ;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
   color: $lightFont;
   background-color: $lightBg;
 
@@ -17,13 +16,9 @@ $lightFont: #111111 ;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  max-width: 1280px;
-  margin: 0 auto;
-  // padding: 2rem;
+  max-width: 100%;
   text-align: center;
 }
-
-
 
 body {
   margin: 0;

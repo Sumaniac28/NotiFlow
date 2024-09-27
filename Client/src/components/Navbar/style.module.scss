@@ -1,0 +1,34 @@
+.wrapper{
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    .navbar{
+        width: 95vw;
+        height: 7vh;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #E2E2E2;
+        margin: 30px 10px 10px 10px;
+        border-radius: 10px;
+        padding: 0px 40px 0px 40px;
+        p{
+            width: 100%;
+            padding: 3px;
+            border-radius: 5px;
+            font-size: 2.5vh;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .selected{
+            background-color: #FF4B4B;
+            color: #E2E2E2;
+            font-weight: bold;
+            text-align: center;
+        }
+            
+    }
+}
+
+
