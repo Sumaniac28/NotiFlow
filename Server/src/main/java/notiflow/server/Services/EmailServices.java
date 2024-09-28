@@ -1,41 +1,31 @@
 package notiflow.server.Services;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import notiflow.server.Config.MailSenderConfiguration;
 import notiflow.server.Entities.EmailEntity;
-import notiflow.server.Entities.RecipientEntity;
 import notiflow.server.Entities.TemplateEntity;
 import notiflow.server.Entities.UserEntity;
 import notiflow.server.Jobs.SimpleEmailJob;
 import notiflow.server.Jobs.TemplateEmailJob;
 import notiflow.server.Repository.EmailRepository;
-import notiflow.server.Repository.TemplateRepository;
-import notiflow.server.Repository.UserRepository;
+import notiflow.server.Requests.AttachmentRequest;
 import notiflow.server.Requests.EmailRequest;
 import notiflow.server.Requests.RecipientRequest;
-import notiflow.server.Requests.TemplateRequest;
-import org.quartz.*;
+import notiflow.server.Utils.EmailUtility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.io.IOException;
 import java.util.List;
-import java.util.Properties;
-import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,223 +34,179 @@ public class EmailServices {
     private static final Logger logger = LoggerFactory.getLogger(EmailServices.class);
 
     private final EmailRepository emailRepository;
-    private final UserRepository userRepository;
-    private final TemplateRepository templateRepository;
     private final JavaMailSender mailSender;
     private final SpringTemplateEngine templateEngine;
-    private final Scheduler scheduler;
-    private ObjectMapper objectMapper;
+    private final UserServices userServices;
+    private final AttachmentServices attachmentServices;
+    private final TemplateServices templateServices;
+    private final MailSenderConfiguration mailSenderConfiguration;
+    private final SchedulingServices schedulingServices;
 
     @Autowired
-    public EmailServices(EmailRepository emailRepository, UserRepository userRepository, TemplateRepository templateRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine, @Qualifier("scheduler") Scheduler scheduler, ObjectMapper objectMapper) {
+    public EmailServices(EmailRepository emailRepository, JavaMailSender mailSender, @Qualifier("templateEngine") SpringTemplateEngine templateEngine, UserServices userServices, AttachmentServices attachmentServices, TemplateServices templateServices, MailSenderConfiguration mailSenderConfiguration, SchedulingServices schedulingServices) {
         this.emailRepository = emailRepository;
-        this.userRepository = userRepository;
-        this.templateRepository = templateRepository;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
-        this.scheduler = scheduler;
-        this.objectMapper = objectMapper;
+        this.userServices = userServices;
+        this.attachmentServices = attachmentServices;
+        this.templateServices = templateServices;
+        this.mailSenderConfiguration = mailSenderConfiguration;
+        this.schedulingServices = schedulingServices;
     }
 
-    private JavaMailSender createJavaMailSender(String fromEmail, String password) {
-        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-        mailSender.setHost("smtp.gmail.com");
-        mailSender.setPort(587);
-
-        mailSender.setUsername(fromEmail);
-        mailSender.setPassword(password);
-
-        Properties props = mailSender.getJavaMailProperties();
-        props.put("mail.transport.protocol", "smtp");
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.debug", "true");
-
-        return mailSender;
-    }
-
-    private UserEntity getUser(String fromEmail) {
-        UserEntity user = userRepository.findByEmail(fromEmail);
-        if (user == null) {
-            throw new IllegalArgumentException("User not found");
-        }
-        return user;
-    }
-
-    private TemplateEntity saveTemplateEntity(TemplateRequest templateRequest) {
-        if (templateRequest == null) {
-            return null;
-        }
-        TemplateEntity templateEntity = new TemplateEntity();
-        templateEntity.setCoverImageUrl(templateRequest.getCoverImageUrl());
-        templateEntity.setCompanyLogoUrl(templateRequest.getCompanyLogoUrl());
-
-        return templateRepository.save(templateEntity);
-    }
-
-    private EmailEntity prepareEmailEntity(EmailRequest emailRequest, UserEntity user, TemplateEntity templateEntity) {
-        if (emailRequest.getSubject() == null || emailRequest.getSubject().isEmpty()) {
-            throw new IllegalArgumentException("Subject cannot be null or empty");
-        }
-        if (emailRequest.getMessage() == null || emailRequest.getMessage().isEmpty()) {
-            throw new IllegalArgumentException("Message cannot be null or empty");
+    private void setRecipients(MimeMessageHelper helper, EmailRequest emailRequest) throws MessagingException {
+        List<String> toRecipients = getRecipientsByType(emailRequest, "TO");
+        if (!toRecipients.isEmpty()) {
+            helper.setTo(toRecipients.toArray(new String[0]));
         }
 
-        EmailEntity emailEntity = new EmailEntity();
-        emailEntity.setSubject(emailRequest.getSubject());
-        emailEntity.setMessage(emailRequest.getMessage());
-        emailEntity.setTemplateEntity(templateEntity);
-        emailEntity.setUser(user);
-        emailEntity.setSent(false);
+        List<String> ccRecipients = getRecipientsByType(emailRequest, "CC");
+        if (!ccRecipients.isEmpty()) {
+            helper.setCc(ccRecipients.toArray(new String[0]));
+        }
 
-        Set<RecipientEntity> recipientEntities = emailRequest.getRecipients().stream()
-                .map(r -> {
-                    RecipientEntity recipientEntity = new RecipientEntity();
-                    recipientEntity.setEmail(r.getEmail());
-                    recipientEntity.setType(r.getType());
-                    recipientEntity.setEmailEntity(emailEntity);
-                    return recipientEntity;
-                })
-                .collect(Collectors.toSet());
-
-        emailEntity.setRecipients(recipientEntities);
-
-        return emailEntity;
-    }
-
-    private void validateScheduledDate(LocalDateTime scheduledDateTime) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime maxAllowedDate = now.plusDays(5);
-
-        if (scheduledDateTime.isAfter(maxAllowedDate)) {
-            throw new IllegalArgumentException("Scheduled date cannot be more than 5 days ahead");
+        List<String> bccRecipients = getRecipientsByType(emailRequest, "BCC");
+        if (!bccRecipients.isEmpty()) {
+            helper.setBcc(bccRecipients.toArray(new String[0]));
         }
     }
 
-    private String convertEmailRequestToJson(EmailRequest emailRequest) {
+    private List<String> getRecipientsByType(EmailRequest emailRequest, String type) {
+        return emailRequest.getRecipients().stream().filter(r -> type.equals(r.getType().toString())).map(RecipientRequest::getEmail).collect(Collectors.toList());
+    }
+
+    private void handleAttachments(AttachmentRequest attachmentRequest, MimeMessageHelper helper) throws IOException, MessagingException {
+        if (attachmentRequest != null) {
+            attachmentServices.processAttachments(helper, attachmentRequest.getImages(), "Images");
+            attachmentServices.processAttachments(helper, attachmentRequest.getPdfs(), "PDFs");
+            attachmentServices.processAttachments(helper, attachmentRequest.getDocs(), "Documents");
+            attachmentServices.processAttachments(helper, attachmentRequest.getOther(), "Other Files");
+        }
+    }
+
+    private void sendAndSaveEmail(JavaMailSender mailSender, MimeMessage mimeMessage, EmailEntity emailEntity, String recipient) throws MessagingException {
         try {
-            return objectMapper.writeValueAsString(emailRequest);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to convert EmailRequest to JSON", e);
+            mailSender.send(mimeMessage);
+            emailEntity.setSent(true);
+            logger.info("Email sent successfully to: {}", recipient);
+        } catch (Exception e) {
+            emailEntity.setSent(false);
+            logger.error("Failed to send email to {}: {}", recipient, e.getMessage());
+            throw new MessagingException("Failed to send email to " + recipient + ": " + e.getMessage());
+        } finally {
+            emailRepository.save(emailEntity);
         }
     }
 
-    private void scheduleEmailJob(EmailRequest emailRequest, Class<? extends Job> jobClass, LocalDateTime scheduleFutureMail) {
 
-        JobDetail jobDetail = JobBuilder.newJob(jobClass)
-                .withIdentity(UUID.randomUUID().toString(), "email-jobs")
-                .usingJobData("emailRequestJson", convertEmailRequestToJson(emailRequest))
-                .build();
-
-        Trigger trigger = TriggerBuilder.newTrigger()
-                .withIdentity(UUID.randomUUID().toString(), "email-triggers")
-                .startAt(java.util.Date.from(scheduleFutureMail.atZone(ZoneId.systemDefault()).toInstant()))
-                .build();
-
-        try {
-            scheduler.scheduleJob(jobDetail, trigger);
-        } catch (SchedulerException e) {
-            throw new RuntimeException("Failed to schedule email", e);
-        }
-    }
-
-    public void sendScheduledSimpleEmail(EmailRequest emailRequest) throws MessagingException{
-        if(emailRequest.getScheduleFutureMail() == null){
+    public void sendScheduledSimpleEmail(EmailRequest emailRequest) throws MessagingException {
+        if (emailRequest.getScheduleFutureMail() == null) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
-        }else if(emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())){
+        } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
-        }
-        else{
-            validateScheduledDate(emailRequest.getScheduleFutureMail());
-            scheduleEmailJob(emailRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
+        } else {
+            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(emailRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
         }
     }
 
-    public void sendScheduledTemplateEmail(EmailRequest emailRequest) throws MessagingException{
-        if(emailRequest.getScheduleFutureMail() == null){
+    public void sendScheduledTemplateEmail(EmailRequest emailRequest) throws MessagingException {
+        if (emailRequest.getScheduleFutureMail() == null) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
-        }else if(emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())){
+        } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
-        }
-        else{
-            validateScheduledDate(emailRequest.getScheduleFutureMail());
-            scheduleEmailJob(emailRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
+        } else {
+            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(emailRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
         }
     }
 
     @Transactional
     public void sendEmail(EmailRequest emailRequest) throws MessagingException {
-        UserEntity user = getUser(emailRequest.getFromEmail());
-        JavaMailSender mailSender = createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
+        UserEntity user = userServices.getUser(emailRequest.getFromEmail());
+        JavaMailSender mailSender = mailSenderConfiguration.createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true); // true indicates multipart email
+        sendSimpleEmail(emailRequest, user, mailSender, mimeMessage, helper);
+    }
 
-        sendSimpleEmail(emailRequest, user, mailSender);
+    @Transactional
+    public void sendAttachmentMail(EmailRequest emailRequest) throws MessagingException {
+        UserEntity user = userServices.getUser(emailRequest.getFromEmail());
+        JavaMailSender mailSender = mailSenderConfiguration.createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true); // true indicates multipart email
+        sendSimpleEmail(emailRequest, user, mailSender, mimeMessage, helper);
     }
 
     @Transactional
     public void sendTemplateEmail(EmailRequest emailRequest) throws MessagingException {
-        UserEntity user = getUser(emailRequest.getFromEmail());
-        JavaMailSender mailSender = createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
-
-        TemplateEntity templateEntity = saveTemplateEntity(emailRequest.getTemplateImages());
-
-        EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, templateEntity);
-
+        UserEntity user = userServices.getUser(emailRequest.getFromEmail());
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+        JavaMailSender mailSender = mailSenderConfiguration.createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
+        TemplateEntity templateEntity = templateServices.saveTemplateEntity(emailRequest.getTemplateImages());
+        EmailEntity emailEntity = EmailUtility.prepareEmailEntity(emailRequest, user, templateEntity);
         templateEntity.setEmailEntity(emailEntity);
-
-        sendEmailWithTemplate(emailRequest, user, mailSender, emailEntity);
+        sendEmailWithTemplate(emailRequest, user, mailSender, mimeMessage, helper, emailEntity);
     }
 
-    private void sendSimpleEmail(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender) throws MessagingException {
-        EmailEntity emailEntity = prepareEmailEntity(emailRequest, user, null);
+    @Transactional
+    public void sendAttachmentMailWithTemplate(EmailRequest emailRequest) throws MessagingException {
+        UserEntity user = userServices.getUser(emailRequest.getFromEmail());
+        MimeMessage mimeMessage = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+        JavaMailSender mailSender = mailSenderConfiguration.createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
+        TemplateEntity templateEntity = templateServices.saveTemplateEntity(emailRequest.getTemplateImages());
+        EmailEntity emailEntity = EmailUtility.prepareEmailEntity(emailRequest, user, templateEntity);
+        templateEntity.setEmailEntity(emailEntity);
+        sendEmailWithTemplate(emailRequest, user, mailSender, mimeMessage, helper, emailEntity);
+    }
 
-        List<String> recipients = emailRequest.getRecipients().stream()
-                .filter(r -> "TO".equals(r.getType().toString()))
-                .map(RecipientRequest::getEmail)
-                .collect(Collectors.toList());
-
-        for (String recipient : recipients) {
-            if (recipient == null || recipient.isEmpty()) {
-                logger.warn("Skipping empty recipient");
-                continue;
-            }
-
-            SimpleMailMessage email = new SimpleMailMessage();
-            email.setTo(recipient);
-            email.setSubject(emailRequest.getSubject());
-            email.setText(emailRequest.getMessage());
-
-            List<String> ccRecipients = emailRequest.getRecipients().stream()
-                    .filter(r -> "CC".equals(r.getType().toString()))
-                    .map(RecipientRequest::getEmail)
-                    .collect(Collectors.toList());
-            if (!ccRecipients.isEmpty()) {
-                email.setCc(ccRecipients.toArray(new String[0]));
-            }
-
-            List<String> bccRecipients = emailRequest.getRecipients().stream()
-                    .filter(r -> "BCC".equals(r.getType().toString()))
-                    .map(RecipientRequest::getEmail)
-                    .collect(Collectors.toList());
-            if (!bccRecipients.isEmpty()) {
-                email.setBcc(bccRecipients.toArray(new String[0]));
-            }
-
-            try {
-                logger.info("Sending simple email to: {}", recipient);
-                mailSender.send(email);
-                emailEntity.setSent(true);
-                logger.info("Simple email sent successfully to: {}", recipient);
-            } catch (Exception e) {
-                emailEntity.setSent(false);
-                logger.error("Failed to send simple email to {}: {}", recipient, e.getMessage());
-                throw new MessagingException("Failed to send simple email to " + recipient + ": " + e.getMessage());
-            } finally {
-                emailRepository.save(emailEntity);
-            }
+    @Transactional
+    public void sendScheduledAttachmentEmail(EmailRequest emailRequest) throws MessagingException {
+        if (emailRequest.getScheduleFutureMail() == null) {
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
+        } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
+        } else {
+            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(emailRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
         }
     }
 
-    private void sendEmailWithTemplate(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, EmailEntity emailEntity) throws MessagingException {
+    @Transactional
+    public void sendScheduledAttachmentEmailWithTemplate(EmailRequest emailRequest) throws MessagingException {
+        if (emailRequest.getScheduleFutureMail() == null) {
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be null");
+        } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
+            throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
+        } else {
+            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(emailRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
+        }
+    }
+
+    private void sendSimpleEmail(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, MimeMessage mimeMessage, MimeMessageHelper helper) throws MessagingException {
+        EmailEntity emailEntity = EmailUtility.prepareEmailEntity(emailRequest, user, null);
+        setRecipients(helper, emailRequest);
+
+        helper.setSubject(emailRequest.getSubject());
+        helper.setText(emailRequest.getMessage());
+
+        try {
+            handleAttachments(emailRequest.getAttachments(), helper);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        List<String> recipients = getRecipientsByType(emailRequest, "TO");
+        for (String recipient : recipients) {
+            sendAndSaveEmail(mailSender, mimeMessage, emailEntity, recipient);
+        }
+    }
+
+    private void sendEmailWithTemplate(EmailRequest emailRequest, UserEntity user, JavaMailSender mailSender, MimeMessage mimeMessage, MimeMessageHelper helper, EmailEntity emailEntity) throws MessagingException {
         Context context = new Context();
         context.setVariable("coverImageURL", emailRequest.getTemplateImages() != null ? emailRequest.getTemplateImages().getCoverImageUrl() : null);
         context.setVariable("message", emailRequest.getMessage());
@@ -269,53 +215,20 @@ public class EmailServices {
         context.setVariable("companyName", user.getName());
 
         String htmlContent = templateEngine.process("email_template", context);
+        setRecipients(helper, emailRequest);
 
-        List<String> recipients = emailRequest.getRecipients().stream()
-                .filter(r -> "TO".equals(r.getType().toString()))
-                .map(RecipientRequest::getEmail)
-                .collect(Collectors.toList());
+        helper.setSubject(emailRequest.getSubject());
+        helper.setText(htmlContent, true);
 
+        try {
+            handleAttachments(emailRequest.getAttachments(), helper);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        List<String> recipients = getRecipientsByType(emailRequest, "TO");
         for (String recipient : recipients) {
-            if (recipient == null || recipient.isEmpty()) {
-                logger.warn("Skipping empty recipient");
-                continue;
-            }
-
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-
-            helper.setTo(recipient);
-            helper.setSubject(emailRequest.getSubject());
-            helper.setText(htmlContent, true);
-
-            List<String> ccRecipients = emailRequest.getRecipients().stream()
-                    .filter(r -> "CC".equals(r.getType().toString()))
-                    .map(RecipientRequest::getEmail)
-                    .collect(Collectors.toList());
-            if (!ccRecipients.isEmpty()) {
-                helper.setCc(ccRecipients.toArray(new String[0]));
-            }
-
-            List<String> bccRecipients = emailRequest.getRecipients().stream()
-                    .filter(r -> "BCC".equals(r.getType().toString()))
-                    .map(RecipientRequest::getEmail)
-                    .collect(Collectors.toList());
-            if (!bccRecipients.isEmpty()) {
-                helper.setBcc(bccRecipients.toArray(new String[0]));
-            }
-
-            try {
-                logger.info("Sending template email to: {}", recipient);
-                mailSender.send(mimeMessage);
-                emailEntity.setSent(true);
-                logger.info("Template email sent successfully to: {}", recipient);
-            } catch (Exception e) {
-                emailEntity.setSent(false);
-                logger.error("Failed to send template email to {}: {}", recipient, e.getMessage());
-                throw new MessagingException("Failed to send template email to " + recipient + ": " + e.getMessage());
-            } finally {
-                emailRepository.save(emailEntity);
-            }
+            sendAndSaveEmail(mailSender, mimeMessage, emailEntity, recipient);
         }
     }
 }

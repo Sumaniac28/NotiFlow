@@ -22,12 +22,7 @@ public class UserServices {
             throw new IllegalArgumentException("User with given email or phone already exists");
         }
 
-        UserEntity user = new UserEntity(
-                userRequest.getName(),
-                userRequest.getEmail(),
-                userRequest.getPhone(),
-                userRequest.getPassword()
-        );
+        UserEntity user = new UserEntity(userRequest.getName(), userRequest.getEmail(), userRequest.getPhone(), userRequest.getPassword());
 
         userRepository.save(user);
     }
@@ -46,5 +41,13 @@ public class UserServices {
 
     public boolean isUserExists(String email, String phone) {
         return userRepository.existsByEmail(email) || userRepository.existsByPhone(phone);
+    }
+
+    public UserEntity getUser(String fromEmail) {
+        UserEntity user = userRepository.findByEmail(fromEmail);
+        if (user == null) {
+            throw new IllegalArgumentException("User not found");
+        }
+        return user;
     }
 }

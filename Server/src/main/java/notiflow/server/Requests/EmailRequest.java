@@ -1,5 +1,6 @@
 package notiflow.server.Requests;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -26,8 +27,10 @@ public class EmailRequest implements Serializable {
     private String message;
 
     @NotEmpty(message = "Recipients are required")
+    @JsonProperty("recipients")
     private List<RecipientRequest> recipients;
 
+    private AttachmentRequest attachments;
     private TemplateRequest templateImages;
     private LocalDateTime scheduleFutureMail;
 
@@ -72,6 +75,14 @@ public class EmailRequest implements Serializable {
         this.recipients = recipients;
     }
 
+    public AttachmentRequest getAttachments() {
+        return attachments;
+    }
+
+    public void setAttachments(AttachmentRequest attachments) {
+        this.attachments = attachments;
+    }
+
     public TemplateRequest getTemplateImages() {
         return templateImages;
     }
@@ -86,5 +97,19 @@ public class EmailRequest implements Serializable {
 
     public void setScheduleFutureMail(LocalDateTime scheduleFutureMail) {
         this.scheduleFutureMail = scheduleFutureMail;
+    }
+
+    @Override
+    public String toString() {
+        return "EmailRequest{" +
+                "fromEmail='" + fromEmail + '\'' +
+                ", password='" + password + '\'' +
+                ", subject='" + subject + '\'' +
+                ", message='" + message + '\'' +
+                ", recipients=" + recipients +
+                ", attachments=" + attachments +
+                ", templateImages=" + templateImages +
+                ", scheduleFutureMail=" + scheduleFutureMail +
+                '}';
     }
 }
