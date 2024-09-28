@@ -3,6 +3,7 @@ package notiflow.server.Requests;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.Serializable;
+import java.util.Arrays;
 
 public class AttachmentRequest implements Serializable {
 
@@ -43,5 +44,15 @@ public class AttachmentRequest implements Serializable {
 
     public void setOther(MultipartFile[] other) {
         this.other = other;
+    }
+
+    @Override
+    public String toString() {
+        return "AttachmentRequest{" +
+                "images=" + Arrays.toString(images) +
+                ", pdfs=" + Arrays.toString(pdfs) +
+                ", docs=" + Arrays.toString(docs) +
+                ", other=" + Arrays.toString(other) +
+                '}';
     }
 }
