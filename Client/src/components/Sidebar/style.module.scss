@@ -1,0 +1,23 @@
+.wrapper{
+    padding: 0;
+    .sidebar{
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        background-color: aqua;
+        width: 20vw;
+        height: 86vh;
+        padding: 20px;
+        position: fixed;
+        left: 0;
+        p{
+            padding:0;
+            margin-bottom:5px;
+            text-decoration: none;
+        }
+        .selected{
+            color: aquamarine;
+        }
+
+    }
+}
