@@ -1,6 +1,7 @@
 package notiflow.server.Requests;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -31,8 +32,27 @@ public class EmailRequest implements Serializable {
     private List<RecipientRequest> recipients;
 
     private AttachmentRequest attachments;
+
+    @JsonProperty("s3Data")
+    private S3Requests S3Data;
+
     private TemplateRequest templateImages;
+
     private LocalDateTime scheduleFutureMail;
+
+    public EmailRequest() {
+    }
+
+    public EmailRequest(String fromEmail, String password, String subject, String message, List<RecipientRequest> recipients, S3Requests S3Data, TemplateRequest templateImages, LocalDateTime scheduleFutureMail) {
+        this.fromEmail = fromEmail;
+        this.password = password;
+        this.subject = subject;
+        this.message = message;
+        this.recipients = recipients;
+        this.S3Data = S3Data;
+        this.templateImages = templateImages;
+        this.scheduleFutureMail = scheduleFutureMail;
+    }
 
     // Getters and setters
     public String getFromEmail() {
@@ -83,6 +103,14 @@ public class EmailRequest implements Serializable {
         this.attachments = attachments;
     }
 
+    public S3Requests getS3Data() {
+        return S3Data;
+    }
+
+    public void setS3Data(S3Requests S3Data) {
+        this.S3Data = S3Data;
+    }
+
     public TemplateRequest getTemplateImages() {
         return templateImages;
     }
@@ -101,15 +129,6 @@ public class EmailRequest implements Serializable {
 
     @Override
     public String toString() {
-        return "EmailRequest{" +
-                "fromEmail='" + fromEmail + '\'' +
-                ", password='" + password + '\'' +
-                ", subject='" + subject + '\'' +
-                ", message='" + message + '\'' +
-                ", recipients=" + recipients +
-                ", attachments=" + attachments +
-                ", templateImages=" + templateImages +
-                ", scheduleFutureMail=" + scheduleFutureMail +
-                '}';
+        return "EmailRequest{" + "fromEmail='" + fromEmail + '\'' + ", password='" + password + '\'' + ", subject='" + subject + '\'' + ", message='" + message + '\'' + ", recipients=" + recipients + ", attachments=" + attachments + ", S3Data=" + S3Data + ", templateImages=" + templateImages + ", scheduleFutureMail=" + scheduleFutureMail + '}';
     }
 }

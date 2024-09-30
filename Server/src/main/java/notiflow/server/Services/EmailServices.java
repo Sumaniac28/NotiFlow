@@ -9,7 +9,6 @@ import notiflow.server.Entities.UserEntity;
 import notiflow.server.Jobs.SimpleEmailJob;
 import notiflow.server.Jobs.TemplateEmailJob;
 import notiflow.server.Repository.EmailRepository;
-import notiflow.server.Requests.AttachmentRequest;
 import notiflow.server.Requests.EmailRequest;
 import notiflow.server.Requests.RecipientRequest;
 import notiflow.server.Utils.EmailUtility;
@@ -75,14 +74,6 @@ public class EmailServices {
         return emailRequest.getRecipients().stream().filter(r -> type.equals(r.getType().toString())).map(RecipientRequest::getEmail).collect(Collectors.toList());
     }
 
-    private void handleAttachments(AttachmentRequest attachmentRequest, MimeMessageHelper helper) throws IOException, MessagingException {
-        if (attachmentRequest != null) {
-            attachmentServices.processAttachments(helper, attachmentRequest.getImages(), "Images");
-            attachmentServices.processAttachments(helper, attachmentRequest.getPdfs(), "PDFs");
-            attachmentServices.processAttachments(helper, attachmentRequest.getDocs(), "Documents");
-            attachmentServices.processAttachments(helper, attachmentRequest.getOther(), "Other Files");
-        }
-    }
 
     private void sendAndSaveEmail(JavaMailSender mailSender, MimeMessage mimeMessage, EmailEntity emailEntity, String recipient) throws MessagingException {
         try {
@@ -135,8 +126,9 @@ public class EmailServices {
         UserEntity user = userServices.getUser(emailRequest.getFromEmail());
         JavaMailSender mailSender = mailSenderConfiguration.createJavaMailSender(emailRequest.getFromEmail(), emailRequest.getPassword());
         MimeMessage mimeMessage = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true); // true indicates multipart email
-        sendSimpleEmail(emailRequest, user, mailSender, mimeMessage, helper);
+        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true);
+        EmailRequest newRequest = attachmentServices.uploadAndGetRequest(emailRequest);
+        sendSimpleEmail(newRequest, user, mailSender, mimeMessage, helper);
     }
 
     @Transactional
@@ -160,7 +152,8 @@ public class EmailServices {
         TemplateEntity templateEntity = templateServices.saveTemplateEntity(emailRequest.getTemplateImages());
         EmailEntity emailEntity = EmailUtility.prepareEmailEntity(emailRequest, user, templateEntity);
         templateEntity.setEmailEntity(emailEntity);
-        sendEmailWithTemplate(emailRequest, user, mailSender, mimeMessage, helper, emailEntity);
+        EmailRequest newRequest = attachmentServices.uploadAndGetRequest(emailRequest);
+        sendEmailWithTemplate(newRequest, user, mailSender, mimeMessage, helper, emailEntity);
     }
 
     @Transactional
@@ -170,8 +163,9 @@ public class EmailServices {
         } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
         } else {
-            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
-            schedulingServices.scheduleEmailJob(emailRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
+            EmailRequest newRequest = attachmentServices.uploadAndGetRequest(emailRequest);
+            schedulingServices.validateScheduledDate(newRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(newRequest, SimpleEmailJob.class, emailRequest.getScheduleFutureMail());
         }
     }
 
@@ -182,8 +176,9 @@ public class EmailServices {
         } else if (emailRequest.getScheduleFutureMail().isBefore(java.time.LocalDateTime.now())) {
             throw new IllegalArgumentException("ScheduleFutureMail cannot be in the past");
         } else {
-            schedulingServices.validateScheduledDate(emailRequest.getScheduleFutureMail());
-            schedulingServices.scheduleEmailJob(emailRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
+            EmailRequest newRequest = attachmentServices.uploadAndGetRequest(emailRequest);
+            schedulingServices.validateScheduledDate(newRequest.getScheduleFutureMail());
+            schedulingServices.scheduleEmailJob(newRequest, TemplateEmailJob.class, emailRequest.getScheduleFutureMail());
         }
     }
 
@@ -195,7 +190,7 @@ public class EmailServices {
         helper.setText(emailRequest.getMessage());
 
         try {
-            handleAttachments(emailRequest.getAttachments(), helper);
+            attachmentServices.handleAttachments(emailRequest.getS3Data(), helper);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -221,7 +216,7 @@ public class EmailServices {
         helper.setText(htmlContent, true);
 
         try {
-            handleAttachments(emailRequest.getAttachments(), helper);
+            attachmentServices.handleAttachments(emailRequest.getS3Data(), helper);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

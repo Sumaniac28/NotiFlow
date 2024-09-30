@@ -125,6 +125,7 @@ public class EmailController {
 
     @PostMapping("/schedule/sendAttachmentMail")
     public ResponseEntity<String> scheduleAttachmentEmail(@Valid @ModelAttribute EmailRequest emailRequest) {
+
         ResponseEntity<String> toxicityResponse = toxicDetectionService.checkToxicity(emailRequest.getMessage());
 
         if (toxicityResponse != null) {

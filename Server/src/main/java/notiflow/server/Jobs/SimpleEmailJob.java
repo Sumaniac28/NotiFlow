@@ -27,7 +27,6 @@ public class SimpleEmailJob implements Job {
     @Override
     public void execute(JobExecutionContext jobExecutionContext) throws JobExecutionException {
         String emailRequestJson = jobExecutionContext.getJobDetail().getJobDataMap().getString("emailRequestJson");
-
         EmailRequest emailRequest;
         try {
             emailRequest = objectMapper.readValue(emailRequestJson, EmailRequest.class);
